@@ -22,6 +22,13 @@ pipeline {
     // dedicated agent with git, Node.js 20, npm, docker CLI, awscli v2.
     agent any
 
+    // Requires a NodeJS installation named exactly "NodeJS-20" configured
+    // under Manage Jenkins -> Tools. Puts node/npm on PATH for every stage.
+    // Doesn't help with `docker` — that still needs installing separately.
+    tools {
+        nodejs 'NodeJS-20'
+    }
+
     options {
         disableConcurrentBuilds()
         timestamps()
