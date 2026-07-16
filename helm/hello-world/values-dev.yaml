@@ -1,0 +1,10 @@
+# Placeholder values — replace before deploying.
+nodejs-app:
+  image:
+    repository: "REPLACE-with-ecr_repository_url-output-from-bootstrap"
+
+  replicaCount: 1
+
+  ingress:
+    annotations:
+      alb.ingress.kubernetes.io/subnets: "subnet-aaaaaaaaaaaaaaaaa,subnet-bbbbbbbbbbbbbbbbb"

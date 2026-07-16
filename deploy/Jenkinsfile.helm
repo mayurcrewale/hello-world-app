@@ -1,0 +1,165 @@
+// UNUSED — kept for reference only. Deployment switched to plain kubectl
+// manifests (see ../Deployment/ and the active deploy/Jenkinsfile). This
+// file is not wired to any Jenkins job; it's here in case Helm is wanted
+// again later, not as a second active pipeline.
+//
+// CD pipeline: helm upgrade --install to the selected environment, gated by
+// manual approval. Never builds anything — it deploys an image tag that the
+// CI pipeline (../Jenkinsfile) already pushed to ECR.
+//
+// The EKS API endpoint is private-only (see eks-poc), so this agent must
+// have network access to the cluster's VPC (bastion/VPN/agent-in-VPC) —
+// exactly the same constraint as the Terraform CD pipeline in eks-poc.
+//
+// AWS auth: assumes the agent already has AWS credentials in its ambient
+// environment (EC2 instance profile / ECS task role / IRSA) permitted to
+// call eks:DescribeCluster / sts:AssumeRole for cluster access, and that the
+// resulting IAM identity is mapped to sufficient Kubernetes RBAC (aws-auth
+// or EKS access entries) to deploy into the `hello-world` namespace.
+//
+// helm/hello-world/Chart.yaml depends on the separate helm-nodejs-app repo
+// via a `file://../../../helm-nodejs-app` path — this ONLY resolves if that
+// repo is checked out as a sibling directory on this same agent/workspace.
+// That's a real, deliberate limitation for now (see helm-nodejs-app's
+// README "Versioning") — switch to an OCI registry (e.g. push the chart to
+// the same ECR used for images) before treating this pipeline as production.
+
+pipeline {
+    // TODO: replace 'helm-kubectl' with your actual Jenkins agent label.
+    // Needs: git, awscli v2, kubectl, helm, and network access to the
+    // cluster's private API endpoint.
+    agent { label 'helm-kubectl' }
+
+    options {
+        disableConcurrentBuilds()
+        timestamps()
+        buildDiscarder(logRotator(numToKeepStr: '30'))
+    }
+
+    parameters {
+        choice(
+            name: 'ENVIRONMENT',
+            choices: ['dev', 'prod'],
+            description: 'Environment to deploy to.'
+        )
+        string(
+            name: 'IMAGE_TAG',
+            defaultValue: '',
+            description: 'Image tag pushed by the CI pipeline (see its image-tag.txt build artifact / build description).'
+        )
+    }
+
+    environment {
+        AWS_DEFAULT_REGION = 'eu-west-1'
+        // Matches the cluster_name convention set in eks-poc's
+        // environments/tfvars/<env>.tfvars ("hello-world-dev" / "hello-world-prod").
+        CLUSTER_NAME = "hello-world-${params.ENVIRONMENT}"
+        NAMESPACE    = 'hello-world'
+        RELEASE_NAME = 'hello-world'
+        VALUES_FILE  = "helm/hello-world/values-${params.ENVIRONMENT}.yaml"
+    }
+
+    stages {
+        stage('Validate parameters') {
+            steps {
+                script {
+                    if (!params.IMAGE_TAG?.trim()) {
+                        error('IMAGE_TAG is required — use the tag the CI pipeline pushed (see its image-tag.txt artifact).')
+                    }
+                }
+            }
+        }
+
+        stage('Checkout') {
+            steps {
+                checkout scm
+            }
+        }
+
+        stage('Verify AWS access') {
+            steps {
+                sh 'aws sts get-caller-identity'
+            }
+        }
+
+        stage('Configure kubeconfig') {
+            steps {
+                sh "aws eks update-kubeconfig --region ${env.AWS_DEFAULT_REGION} --name ${env.CLUSTER_NAME}"
+            }
+        }
+
+        stage('Helm dependency update') {
+            steps {
+                // Resolves the nodejs-app dependency declared in
+                // helm/hello-world/Chart.yaml. Today that's a `file://`
+                // path into ../helm-nodejs-app — see the caveat at the top
+                // of this file and helm-nodejs-app/README.md "Versioning"
+                // before relying on this outside of a single-checkout setup.
+                sh 'helm dependency update helm/hello-world'
+            }
+        }
+
+        stage('Helm lint') {
+            steps {
+                sh "helm lint helm/hello-world -f helm/hello-world/values.yaml -f ${env.VALUES_FILE} --set nodejs-app.image.tag=${params.IMAGE_TAG}"
+            }
+        }
+
+        stage('Helm dry-run') {
+            steps {
+                sh """
+                    set -euo pipefail
+                    helm upgrade --install ${env.RELEASE_NAME} helm/hello-world \
+                        -f helm/hello-world/values.yaml -f ${env.VALUES_FILE} \
+                        --set nodejs-app.image.tag=${params.IMAGE_TAG} \
+                        --namespace ${env.NAMESPACE} --create-namespace \
+                        --dry-run --debug
+                """
+            }
+        }
+
+        stage('Approval') {
+            steps {
+                input message: "Deploy image tag ${params.IMAGE_TAG} to ${params.ENVIRONMENT}? Review the dry-run output above.",
+                      ok: 'Deploy'
+            }
+        }
+
+        stage('Helm upgrade --install') {
+            steps {
+                sh """
+                    set -euo pipefail
+                    helm upgrade --install ${env.RELEASE_NAME} helm/hello-world \
+                        -f helm/hello-world/values.yaml -f ${env.VALUES_FILE} \
+                        --set nodejs-app.image.tag=${params.IMAGE_TAG} \
+                        --namespace ${env.NAMESPACE} --create-namespace \
+                        --wait --timeout 5m
+                """
+            }
+        }
+
+        stage('Print ALB address') {
+            steps {
+                // Resource name is <release>-nodejs-app: the fullname helper
+                // in the vendored nodejs-app subchart uses its own chart
+                // name, not "hello-world".
+                sh """
+                    set -euo pipefail
+                    echo "Waiting for the ALB hostname to be assigned..."
+                    for i in \$(seq 1 30); do
+                        HOST=\$(kubectl get ingress -n ${env.NAMESPACE} ${env.RELEASE_NAME}-nodejs-app -o jsonpath='{.status.loadBalancer.ingress[0].hostname}' 2>/dev/null || true)
+                        if [ -n "\$HOST" ]; then echo "App reachable at: http://\$HOST"; exit 0; fi
+                        sleep 10
+                    done
+                    echo "ALB hostname not yet assigned after 5 minutes — check 'kubectl get ingress -n ${env.NAMESPACE}' manually."
+                """
+            }
+        }
+    }
+
+    post {
+        always {
+            cleanWs()
+        }
+    }
+}

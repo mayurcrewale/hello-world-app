@@ -1,0 +1,19 @@
+# Values under the `nodejs-app` key are passed through to the upstream
+# helm-nodejs-app chart (see Chart.yaml `dependencies`). Anything not set
+# here falls back to that chart's own defaults (values.yaml there).
+nodejs-app:
+  containerPort: 3000
+
+  ingress:
+    enabled: true
+    annotations:
+      alb.ingress.kubernetes.io/scheme: internet-facing
+      alb.ingress.kubernetes.io/target-type: ip
+      alb.ingress.kubernetes.io/listen-ports: '[{"HTTP": 80}]'
+      alb.ingress.kubernetes.io/healthcheck-path: /health
+
+  # image.repository/tag are always overridden at deploy time — repository
+  # per environment below, tag via --set from the CD Jenkinsfile.
+  image:
+    repository: ""
+    tag: ""

@@ -1,0 +1,165 @@
+// CD pipeline: render plain Kubernetes manifests (Deployment/) with envsubst
+// and kubectl apply them. Never builds anything — it deploys an image tag
+// that the CI pipeline (../Jenkinsfile) already pushed to ECR.
+//
+// ENVIRONMENT=dev skips the manual approval gate — the CI pipeline
+// auto-triggers this job for dev on every main-branch build (see
+// ../Jenkinsfile's "Trigger dev deploy" stage), so gating it on a human
+// would defeat the point. Every other environment (prod) always pauses for
+// approval, whether triggered by a human picking that environment here or
+// (if you ever wire that up) anything else.
+//
+// The EKS API endpoint is private-only (see eks-poc), so this agent must
+// have network access to the cluster's VPC (bastion/VPN/agent-in-VPC) —
+// exactly the same constraint as the Terraform CD pipeline in eks-poc.
+//
+// AWS auth: assumes the agent already has AWS credentials in its ambient
+// environment (EC2 instance profile / ECS task role / IRSA) permitted to
+// call eks:DescribeCluster / sts:AssumeRole for cluster access, and that the
+// resulting IAM identity is mapped to sufficient Kubernetes RBAC (aws-auth
+// or EKS access entries) to deploy into the `hello-world` namespace.
+//
+// Helm is not used here — see ../Deployment/README.md for why the manifest
+// filenames are numbered, and ../README.md for why helm/hello-world still
+// exists in this repo unused.
+
+pipeline {
+    // TODO: replace 'helm-kubectl' with your actual Jenkins agent label.
+    // Needs: git, awscli v2, kubectl, gettext (for envsubst), and network
+    // access to the cluster's private API endpoint.
+    agent { label 'helm-kubectl' }
+
+    options {
+        disableConcurrentBuilds()
+        timestamps()
+        buildDiscarder(logRotator(numToKeepStr: '30'))
+    }
+
+    parameters {
+        choice(
+            name: 'ENVIRONMENT',
+            choices: ['dev', 'prod'],
+            description: 'Environment to deploy to.'
+        )
+        string(
+            name: 'IMAGE_TAG',
+            defaultValue: '',
+            description: 'Image tag pushed by the CI pipeline (see its image-tag.txt build artifact / build description).'
+        )
+    }
+
+    environment {
+        AWS_DEFAULT_REGION = 'eu-west-1'
+        // Matches the cluster_name convention set in eks-poc's
+        // environments/tfvars/<env>.tfvars ("hello-world-dev" / "hello-world-prod").
+        CLUSTER_NAME = "hello-world-${params.ENVIRONMENT}"
+        NAMESPACE    = 'hello-world'
+        // TODO: replace with the ecr_repository_url output from eks-poc/bootstrap.
+        ECR_REPOSITORY_URL = 'REPLACE-with-ecr_repository_url-output-from-bootstrap'
+        ENV_FILE     = "Deployment/env/${params.ENVIRONMENT}.env"
+        RENDERED_DIR = 'Deployment/.rendered'
+    }
+
+    stages {
+        stage('Validate parameters') {
+            steps {
+                script {
+                    if (!params.IMAGE_TAG?.trim()) {
+                        error('IMAGE_TAG is required — use the tag the CI pipeline pushed (see its image-tag.txt artifact).')
+                    }
+                }
+            }
+        }
+
+        stage('Checkout') {
+            steps {
+                checkout scm
+            }
+        }
+
+        stage('Verify AWS access') {
+            steps {
+                sh 'aws sts get-caller-identity'
+            }
+        }
+
+        stage('Configure kubeconfig') {
+            steps {
+                sh "aws eks update-kubeconfig --region ${env.AWS_DEFAULT_REGION} --name ${env.CLUSTER_NAME}"
+            }
+        }
+
+        stage('Render manifests') {
+            steps {
+                sh """
+                    set -euo pipefail
+                    rm -rf ${env.RENDERED_DIR}
+                    mkdir -p ${env.RENDERED_DIR}
+
+                    set -a
+                    source ${env.ENV_FILE}
+                    set +a
+                    export IMAGE="${env.ECR_REPOSITORY_URL}:${params.IMAGE_TAG}"
+
+                    for f in Deployment/0*.yaml; do
+                        envsubst '\${IMAGE} \${REPLICAS} \${ALB_SUBNETS}' < "\$f" > "${env.RENDERED_DIR}/\$(basename "\$f")"
+                    done
+                """
+                sh "cat ${env.RENDERED_DIR}/*.yaml"
+            }
+        }
+
+        stage('kubectl diff') {
+            steps {
+                // kubectl diff exits 1 when there ARE differences (not an
+                // error) and >1 on a real failure — don't let `set -e` (or
+                // Jenkins) fail the build just because there's a diff to show.
+                sh "kubectl diff -f ${env.RENDERED_DIR} || true"
+            }
+        }
+
+        stage('Approval') {
+            // dev deploys are auto-triggered from CI and skip this gate on
+            // purpose (see the header comment). Every other environment
+            // always pauses here.
+            when {
+                expression { params.ENVIRONMENT != 'dev' }
+            }
+            steps {
+                input message: "Deploy image tag ${params.IMAGE_TAG} to ${params.ENVIRONMENT}? Review the diff above.",
+                      ok: 'Deploy'
+            }
+        }
+
+        stage('kubectl apply') {
+            steps {
+                sh """
+                    set -euo pipefail
+                    kubectl apply -f ${env.RENDERED_DIR}
+                    kubectl rollout status deployment/hello-world -n ${env.NAMESPACE} --timeout=5m
+                """
+            }
+        }
+
+        stage('Print ALB address') {
+            steps {
+                sh """
+                    set -euo pipefail
+                    echo "Waiting for the ALB hostname to be assigned..."
+                    for i in \$(seq 1 30); do
+                        HOST=\$(kubectl get ingress -n ${env.NAMESPACE} hello-world -o jsonpath='{.status.loadBalancer.ingress[0].hostname}' 2>/dev/null || true)
+                        if [ -n "\$HOST" ]; then echo "App reachable at: http://\$HOST"; exit 0; fi
+                        sleep 10
+                    done
+                    echo "ALB hostname not yet assigned after 5 minutes — check 'kubectl get ingress -n ${env.NAMESPACE}' manually."
+                """
+            }
+        }
+    }
+
+    post {
+        always {
+            cleanWs()
+        }
+    }
+}

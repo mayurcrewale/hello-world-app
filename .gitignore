@@ -1,0 +1,13 @@
+node_modules/
+npm-debug.log*
+*.log
+.DS_Store
+image-tag.txt
+
+# Vendored by `helm dependency update` — regenerated on demand, not
+# reproducible across machines while helm/hello-world/Chart.yaml still
+# points at a local file:// path. Chart.lock IS committed (like a lockfile).
+helm/*/charts/
+
+# envsubst output, regenerated each CD run
+Deployment/.rendered/
