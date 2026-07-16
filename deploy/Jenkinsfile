@@ -24,10 +24,12 @@
 // exists in this repo unused.
 
 pipeline {
-    // TODO: replace 'helm-kubectl' with your actual Jenkins agent label.
-    // Needs: git, awscli v2, kubectl, gettext (for envsubst), and network
+    // TEMP for first test run: runs on whatever executor is available
+    // (same reasoning as the CI Jenkinsfile). Swap back to
+    // `agent { label 'helm-kubectl' }` once you have a dedicated agent
+    // with git, awscli v2, kubectl, gettext (for envsubst), and network
     // access to the cluster's private API endpoint.
-    agent { label 'helm-kubectl' }
+    agent any
 
     options {
         disableConcurrentBuilds()
