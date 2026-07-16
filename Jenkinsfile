@@ -17,9 +17,10 @@
 // every build of every branch would auto-deploy to dev.
 
 pipeline {
-    // TODO: replace 'nodejs-docker' with your actual Jenkins agent label.
-    // Needs: git, Node.js 20, npm, docker CLI (with socket access), awscli v2.
-    agent { label 'nodejs-docker' }
+    // TEMP for first test run: runs on whatever executor is available.
+    // Swap back to `agent { label 'nodejs-docker' }` once you have a
+    // dedicated agent with git, Node.js 20, npm, docker CLI, awscli v2.
+    agent any
 
     options {
         disableConcurrentBuilds()
