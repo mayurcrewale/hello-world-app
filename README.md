@@ -57,13 +57,27 @@ curl localhost:3000/users
 
 ## CI pipeline (`Jenkinsfile`)
 
-Checkout → `npm ci` → `npm test` → `docker build` → push to ECR, tagged
-`<git-short-sha>-<build-number>` (the ECR repo is `IMMUTABLE`, so every push
-needs a unique tag — plain `latest` won't work here) → **on `main` only**,
-triggers the CD job against `dev` (`build job: env.CD_JOB_NAME, wait: false`
-with `ENVIRONMENT=dev` and the tag just pushed). On success it also archives
+Checkout → `npm ci` → `npm test` → check the version isn't already
+released → `docker build` → push to ECR → **on `main` only**, triggers the
+CD job against `dev` (`build job: env.CD_JOB_NAME, wait: false` with
+`ENVIRONMENT=dev` and the tag just pushed). On success it also archives
 `image-tag.txt` and sets the build description to the pushed image, so you
 can find the tag to deploy manually to `prod`.
+
+**Versioning**: the image tag is `v<version>` straight from `package.json`
+(e.g. `v1.2.0`) — not a git-sha. Bump it yourself before a release-worthy
+push:
+
+```bash
+npm version patch   # or minor / major — bumps package.json, commits, tags locally
+git push && git push --tags
+```
+
+Since the ECR repo is `IMMUTABLE`, a **"Check version not already
+released"** stage queries ECR for that tag before building anything, and
+fails fast with a clear message if you forgot to bump the version — rather
+than letting `docker push` fail later with ECR's own, less helpful
+rejection.
 
 The trigger fires-and-forgets (`wait: false`) — this CI build finishes
 without waiting for the dev deploy, and won't go red if that deploy fails.

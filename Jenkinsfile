@@ -52,9 +52,13 @@ pipeline {
                 checkout scm
                 script {
                     env.GIT_SHORT_SHA = sh(script: 'git rev-parse --short HEAD', returnStdout: true).trim()
-                    // Immutable ECR tags mean every push needs a unique tag,
-                    // even across rebuilds of the same commit.
-                    env.IMAGE_TAG = "${env.GIT_SHORT_SHA}-${env.BUILD_NUMBER}"
+                    // package.json's version is the single source of truth
+                    // for the release version — bump it yourself
+                    // (`npm version patch/minor/major`) before a
+                    // release-worthy push. Not derived from git-sha/build
+                    // number anymore.
+                    env.APP_VERSION = sh(script: "node -p \"require('./package.json').version\"", returnStdout: true).trim()
+                    env.IMAGE_TAG = "v${env.APP_VERSION}"
                 }
             }
         }
@@ -68,6 +72,24 @@ pipeline {
         stage('Test') {
             steps {
                 sh 'npm test'
+            }
+        }
+
+        stage('Check version not already released') {
+            steps {
+                script {
+                    def alreadyPushed = sh(
+                        script: """
+                            aws ecr describe-images --region ${env.AWS_DEFAULT_REGION} \
+                                --repository-name ${env.ECR_REPOSITORY_URL.split('/')[1]} \
+                                --image-ids imageTag=${env.IMAGE_TAG} >/dev/null 2>&1
+                        """,
+                        returnStatus: true
+                    ) == 0
+                    if (alreadyPushed) {
+                        error("${env.IMAGE_TAG} has already been pushed to ECR — bump the version in package.json (e.g. `npm version patch`) before pushing again.")
+                    }
+                }
             }
         }
 

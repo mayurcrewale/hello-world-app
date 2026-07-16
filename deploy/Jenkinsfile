@@ -46,7 +46,7 @@ pipeline {
         string(
             name: 'IMAGE_TAG',
             defaultValue: '',
-            description: 'Image tag pushed by the CI pipeline (see its image-tag.txt build artifact / build description).'
+            description: 'Release version pushed by the CI pipeline, e.g. v1.2.0 (from package.json — see its image-tag.txt build artifact / build description).'
         )
     }
 
