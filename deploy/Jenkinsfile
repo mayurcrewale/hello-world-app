@@ -14,7 +14,7 @@ pipeline {
         stage('Render manifests') {
             steps {
                 withCredentials([file(credentialsId: 'k8s-kubeconfig-id', variable: 'KUBECONFIG')]) {
-                    sh """
+                    sh """#!/bin/bash
                         set -a; source Deployment/env/${params.ENVIRONMENT}.env; set +a
                         export IMAGE="${env.IMAGE_NAME}:${params.IMAGE_TAG}"
                         mkdir -p rendered
@@ -44,7 +44,7 @@ pipeline {
         stage('Apply') {
             steps {
                 withCredentials([file(credentialsId: 'k8s-kubeconfig-id', variable: 'KUBECONFIG')]) {
-                    sh """
+                    sh """#!/bin/bash
                         kubectl apply -f rendered/
                         kubectl rollout status deployment/hello-world -n hello-world --timeout=120s
                     """
