@@ -1,6 +1,0 @@
-dependencies:
-- name: nodejs-app
-  repository: file://../../../helm-nodejs-app
-  version: 0.1.0
-digest: sha256:e5cc606114c544630d31dc035c2fc210eeb00c43c466e877c1c99fe28594c37f
-generated: "2026-07-15T08:58:42.23807+01:00"
