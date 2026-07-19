@@ -21,6 +21,7 @@ pipeline {
         stage('Checkout') {
             steps {
                 checkout scm
+                sh 'pwd && ls -la && git branch -a && git log -1'   // debug
                 script {
                     env.APP_VERSION = sh(script: "node -p \"require('./package.json').version\"", returnStdout: true).trim()
                     env.IMAGE_TAG = "v${env.APP_VERSION}"
