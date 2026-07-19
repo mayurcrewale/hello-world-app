@@ -1,6 +1,9 @@
 pipeline {
     agent any
-
+    triggers {
+        // This ONLY runs the pipeline if a new commit ID is found
+        pollSCM('*/5 * * * *') 
+    }
     tools {
         nodejs 'NodeJS-20'   // Manage Jenkins -> Tools -> NodeJS installations
     }

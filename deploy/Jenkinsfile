@@ -1,6 +1,9 @@
 pipeline {
     agent any
-
+    triggers {
+        // This ONLY runs the pipeline if a new commit ID is found
+        pollSCM('*/5 * * * *') 
+    }
     parameters {
         choice(name: 'ENVIRONMENT', choices: ['dev', 'prod'], description: 'Target environment')
         string(name: 'IMAGE_TAG', description: 'Image tag to deploy, e.g. v1.2.0')
