@@ -7,7 +7,7 @@ pipeline {
     }
 
     environment {
-        IMAGE_NAME = 'mayur21486/helloapp'   // <-- same as CI
+        IMAGE_NAME = 'mayur21486/hello-world-app'   // <-- same as CI
     }
 
     stages {

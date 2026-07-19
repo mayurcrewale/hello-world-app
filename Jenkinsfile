@@ -47,7 +47,7 @@ pipeline {
 
         stage('Push to Docker Hub') {
             steps {
-                sh """
+                sh """#!/bin/bash
                     set -euo pipefail
                     echo "\$DOCKERHUB_CREDS_PSW" | docker login -u "\$DOCKERHUB_CREDS_USR" --password-stdin
                     docker push ${env.IMAGE_NAME}:${env.IMAGE_TAG}
