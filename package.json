@@ -1,12 +1,12 @@
 {
   "name": "hello-world-app",
-  "version": "1.0.0",
+  "version": "1.0.3",
   "private": true,
   "description": "Hello World Node.js app for the EKS POC",
   "main": "src/index.js",
   "scripts": {
     "start": "node src/index.js",
-    "test": "node --test test/"
+    "test": "node --test"
   },
   "engines": {
     "node": ">=20"
