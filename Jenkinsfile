@@ -56,7 +56,7 @@ pipeline {
         }
 
         stage('Trigger dev deploy') {
-            when { branch 'docker-k8s' }
+            when { expression { env.GIT_BRANCH?.endsWith('docker-k8s') } }
             steps {
                 build job: env.CD_JOB_NAME, wait: false, parameters: [
                     string(name: 'ENVIRONMENT', value: 'dev'),
@@ -78,4 +78,4 @@ pipeline {
             cleanWs()
         }
     }
-}
+}       
