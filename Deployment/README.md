@@ -37,7 +37,7 @@ To try this locally without Jenkins:
 
 ```bash
 set -a; source Deployment/env/dev.env; set +a
-export IMAGE="123456789012.dkr.ecr.eu-west-1.amazonaws.com/hello-world-app:test"
+export IMAGE="123456789012.dkr.ecr.eu-west-1.amazonaws.com/hello-world-app:v1.0.0"
 mkdir -p /tmp/rendered
 for f in Deployment/0*.yaml; do
   envsubst '${IMAGE} ${REPLICAS} ${ALB_SUBNETS}' < "$f" > "/tmp/rendered/$(basename "$f")"

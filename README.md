@@ -1,14 +1,10 @@
 # hello-world-app
 
-Node.js "hello world" app for the EKS POC — exposes `/`, `/health`, and
+Node.js "hello world" app for Demo Purpose — exposes `/`, `/health`, and
 `/users`. Deployed to the EKS cluster provisioned by the
 [`eks-poc`](../eks-poc) Terraform repo, behind a public ALB via the AWS Load
 Balancer Controller already installed there.
 
-This repo is deliberately separate from the Terraform repos — it owns the
-app source, Dockerfile, Kubernetes manifests, and both Jenkins pipelines; it
-has no Terraform in it. Deployment is via **plain Kubernetes YAML +
-`kubectl apply`**, not Helm — see **Deployment** below.
 
 **CI auto-deploys to dev; every other environment is manual.** A CI build on
 `main` pushes the image and then automatically triggers the CD pipeline
@@ -73,31 +69,6 @@ npm version patch   # or minor / major — bumps package.json, commits, tags loc
 git push && git push --tags
 ```
 
-Since the ECR repo is `IMMUTABLE`, a **"Check version not already
-released"** stage queries ECR for that tag before building anything, and
-fails fast with a clear message if you forgot to bump the version — rather
-than letting `docker push` fail later with ECR's own, less helpful
-rejection.
-
-The trigger fires-and-forgets (`wait: false`) — this CI build finishes
-without waiting for the dev deploy, and won't go red if that deploy fails.
-The dev CD run's own build history is the source of truth for whether it
-actually succeeded. Switch to `wait: true, propagate: true` if you'd rather
-CI reflect dev-deploy failures directly.
-
-**Before this can run:**
-- Set the agent label (`nodejs-docker` placeholder) to one with Node.js 20,
-  npm, git, docker CLI, and awscli v2.
-- Set `ECR_REPOSITORY_URL` to the `ecr_repository_url` output from
-  `eks-poc/bootstrap` (`terraform output ecr_repository_url`).
-- Set `CD_JOB_NAME` to the actual name of the Jenkins job running
-  `deploy/Jenkinsfile` (see **Jenkins job setup**).
-- Confirm the agent's ambient AWS credentials can push to that ECR repo
-  (see the comment block at the top of the Jenkinsfile).
-- This assumes a **multibranch pipeline** job (so `BRANCH_NAME`/`when {
-  branch 'main' }` work) — on a plain single-branch Pipeline job, either
-  drop that `when` guard or replace it with an equivalent check.
-
 ## Deployment (`Deployment/`)
 
 Plain Kubernetes manifests — Namespace, ServiceAccount, Deployment, Service,
@@ -160,30 +131,3 @@ job at `dev` automatically (no approval). To deploy `prod` (or re-deploy
 `dev` by hand), run the CD job directly with "Build with Parameters" and
 pick the environment/tag yourself — it'll pause for approval unless you
 picked `dev`.
-
-## Helm chart (`helm/hello-world`) — kept, currently unused
-
-This repo also has a working Helm-based path: `helm/hello-world` is a thin
-chart depending on [`helm-nodejs-app`](../helm-nodejs-app) (a separate,
-generic base chart for any Node.js service), and `deploy/Jenkinsfile.helm`
-is the Helm-based CD pipeline that used to be `deploy/Jenkinsfile`. Neither
-is wired to an active Jenkins job — deployment today goes through
-`Deployment/` + `deploy/Jenkinsfile` instead. Both are left in place in case
-Helm is preferred again later; see `helm-nodejs-app/README.md` for how the
-dependency and versioning work if you do switch back.
-
-## Notes / things to revisit
-
-- No database — `/users` is static seed data (`src/users.js`). Wire up
-  a real datastore here if this grows past a POC.
-- No TLS/custom domain on the ALB yet — it's plain HTTP on the ALB's own
-  DNS name. Adding a domain means an ACM cert + a
-  `alb.ingress.kubernetes.io/certificate-arn` annotation + a `HTTPS` listener
-  in `Deployment/04-ingress.yaml`.
-- No rollback pipeline yet — for now, `kubectl rollout undo
-  deployment/hello-world -n hello-world` by hand from a host with cluster
-  access.
-- The app itself has no IRSA role (no annotations on
-  `Deployment/01-serviceaccount.yaml`) since it makes no AWS API calls. If
-  that changes, wire up a role via the shared `terraform-aws-irsa` module
-  and annotate the ServiceAccount there.
