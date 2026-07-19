@@ -56,7 +56,7 @@ pipeline {
         }
 
         stage('Trigger dev deploy') {
-            when { branch 'main' }
+            when { branch 'docker-k8s' }
             steps {
                 build job: env.CD_JOB_NAME, wait: false, parameters: [
                     string(name: 'ENVIRONMENT', value: 'dev'),
