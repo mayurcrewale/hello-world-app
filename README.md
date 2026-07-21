@@ -2,8 +2,8 @@
 
 Node.js "hello world" app for the EKS POC — exposes `/`, `/health`, and
 `/users`. Deployed to the EKS cluster provisioned by the
-[`eks-poc`](../eks-poc) Terraform repo, behind a public ALB via the AWS Load
-Balancer Controller already installed there.
+[`eks-poc`](https://github.com/mayurcrewale/eks-poc) Terraform repo, behind
+a public ALB via the AWS Load Balancer Controller already installed there.
 
 This repo is deliberately separate from the Terraform repos — it owns the
 app source, Dockerfile, Kubernetes manifests, and both Jenkins pipelines; it
@@ -134,7 +134,9 @@ for approval.
 - Fill in real values in `Deployment/env/dev.env` and `Deployment/env/prod.env`:
   `ALB_SUBNETS` needs your VPC's **public** subnet IDs, so the ALB
   Controller knows where to place the ALB without needing VPC-wide subnet
-  tagging.
+  tagging. `DOMAIN`/`CERT_ARN` need a real subdomain + ACM certificate ARN
+  for HTTPS — see `Deployment/README.md` for the exact steps (Route53 zone,
+  same-region ACM cert, DNS validation). Both are still placeholders today.
 - The pipeline assumes cluster names `hello-world-dev` / `hello-world-prod`
   — matching `eks-poc/environments/tfvars/*.tfvars`. Update
   `CLUSTER_NAME` in the Jenkinsfile if you rename them.
@@ -164,7 +166,7 @@ picked `dev`.
 ## Helm chart (`helm/hello-world`) — kept, currently unused
 
 This repo also has a working Helm-based path: `helm/hello-world` is a thin
-chart depending on [`helm-nodejs-app`](../helm-nodejs-app) (a separate,
+chart depending on [`helm-nodejs-app`](https://github.com/mayurcrewale/helm-nodejs-app) (a separate,
 generic base chart for any Node.js service), and `deploy/Jenkinsfile.helm`
 is the Helm-based CD pipeline that used to be `deploy/Jenkinsfile`. Neither
 is wired to an active Jenkins job — deployment today goes through
@@ -176,10 +178,11 @@ dependency and versioning work if you do switch back.
 
 - No database — `/users` is static seed data (`src/users.js`). Wire up
   a real datastore here if this grows past a POC.
-- No TLS/custom domain on the ALB yet — it's plain HTTP on the ALB's own
-  DNS name. Adding a domain means an ACM cert + a
-  `alb.ingress.kubernetes.io/certificate-arn` annotation + a `HTTPS` listener
-  in `Deployment/04-ingress.yaml`.
+- TLS/custom domain support is wired into `Deployment/04-ingress.yaml`
+  (`host`, `certificate-arn`, HTTPS listener, HTTP→HTTPS redirect), but
+  `DOMAIN`/`CERT_ARN` in both `Deployment/env/*.env` are still placeholders
+  — until a real Route53 subdomain + same-region ACM cert are filled in,
+  it renders valid YAML but won't actually resolve or serve HTTPS.
 - No rollback pipeline yet — for now, `kubectl rollout undo
   deployment/hello-world -n hello-world` by hand from a host with cluster
   access.

@@ -104,7 +104,7 @@ pipeline {
                     export IMAGE="${env.ECR_REPOSITORY_URL}:${params.IMAGE_TAG}"
 
                     for f in Deployment/0*.yaml; do
-                        envsubst '\${IMAGE} \${REPLICAS} \${ALB_SUBNETS}' < "\$f" > "${env.RENDERED_DIR}/\$(basename "\$f")"
+                        envsubst '\${IMAGE} \${REPLICAS} \${ALB_SUBNETS} \${DOMAIN} \${CERT_ARN}' < "\$f" > "${env.RENDERED_DIR}/\$(basename "\$f")"
                     done
                 """
                 sh "cat ${env.RENDERED_DIR}/*.yaml"
