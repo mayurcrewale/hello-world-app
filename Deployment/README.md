@@ -24,7 +24,7 @@ Namespace → ServiceAccount → Deployment → Service → Ingress.
 
 ## Placeholders
 
-Three placeholders, substituted via `envsubst` in `deploy/Jenkinsfile`
+Three placeholders, substituted via `envsubst` in `Deployment/Jenkinsfile`
 before `kubectl apply`:
 
 - `${IMAGE}` — full image reference (`<ecr-repo-url>:<tag>`), built by the
@@ -46,4 +46,4 @@ kubectl apply -f /tmp/rendered   # or --dry-run=client to just check it parses
 ```
 
 Adding a third environment: add `env/<name>.env`, add `<name>` to the
-`choices` list in `deploy/Jenkinsfile`.
+`choices` list in `Deployment/Jenkinsfile`.
