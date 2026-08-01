@@ -129,7 +129,7 @@ pipeline {
             }
             steps {
                 script {
-                    def alreadyPushed = sh(
+                    def alreadyInEcr = sh(
                         script: """
                             aws ecr describe-images --region ${env.AWS_DEFAULT_REGION} \
                                 --repository-name ${env.REPO_NAME} \
@@ -137,8 +137,22 @@ pipeline {
                         """,
                         returnStatus: true
                     ) == 0
-                    if (alreadyPushed) {
+                    if (alreadyInEcr) {
                         error("${env.IMAGE_TAG} has already been pushed to ECR — bump the version in package.json (e.g. `npm version patch`) before pushing again.")
+                    }
+
+                    // Also check the git tag independently of ECR -- they
+                    // can drift apart (e.g. an ECR image removed/replaced
+                    // outside this pipeline while the tag, once pushed,
+                    // stays forever), and a stale git tag alone is enough
+                    // to fail the "Tag release in git" stage later after
+                    // already spending a full build/push on this version.
+                    def tagAlreadyPushed = sh(
+                        script: "git ls-remote --exit-code --tags origin refs/tags/${env.IMAGE_TAG} >/dev/null 2>&1",
+                        returnStatus: true
+                    ) == 0
+                    if (tagAlreadyPushed) {
+                        error("${env.IMAGE_TAG} already exists as a git tag — bump the version in package.json (e.g. `npm version patch`) before pushing again.")
                     }
                 }
             }
