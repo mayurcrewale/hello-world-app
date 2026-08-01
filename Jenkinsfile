@@ -1,6 +1,6 @@
 // CI pipeline: checkout -> npm ci/test -> docker build -> push to ECR ->
-// auto-trigger the CD pipeline (deploy/Jenkinsfile) against dev. Deploys to
-// any higher environment (prod) stay manual — trigger deploy/Jenkinsfile's
+// auto-trigger the CD pipeline (Deployment/Jenkinsfile) against dev. Deploys to
+// any higher environment (prod) stay manual — trigger Deployment/Jenkinsfile's
 // job directly and pick the environment there; this pipeline never does
 // that itself.
 //
@@ -53,7 +53,7 @@ pipeline {
         // own name in the Checkout stage below) varies.
         ECR_REGISTRY = '664874245394.dkr.ecr.ap-south-1.amazonaws.com'
         // TODO: replace with the actual name of the Jenkins job pointed at
-        // deploy/Jenkinsfile in this same repo (e.g. a second Pipeline job,
+        // Deployment/Jenkinsfile in this same repo (e.g. a second Pipeline job,
         // or "hello-world-app/deploy" if it's a folder/multibranch setup).
         CD_JOB_NAME = 'hello-world-app-cd'
 
