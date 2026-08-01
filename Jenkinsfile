@@ -4,13 +4,16 @@
 // job directly and pick the environment there; this pipeline never does
 // that itself.
 //
-// AWS auth: assumes the agent already has AWS credentials in its ambient
-// environment (EC2 instance profile / ECS task role / IRSA) with push
-// permission (ecr:GetAuthorizationToken, ecr:BatchCheckLayerAvailability,
+// AWS auth: static access key/secret bound via Jenkins Credentials (see the
+// `environment` block below) -- the same "aws-poc-creds" credential used by
+// eks-poc's Terraform pipeline. Needs push permission
+// (ecr:GetAuthorizationToken, ecr:BatchCheckLayerAvailability,
 // ecr:InitiateLayerUpload, ecr:UploadLayerPart, ecr:CompleteLayerUpload,
-// ecr:PutImage) on the ECR repo created by eks-poc/bootstrap. If you use the
-// Jenkins Credentials plugin instead, wrap the docker-push stage in
-// `withCredentials(...)` / `withAWS(credentials: '...')`.
+// ecr:PutImage) on the ECR repo created by eks-poc/bootstrap.
+//
+// Git auth: a separate "github-pat" credential (GitHub username / a PAT
+// with `repo` scope) is used only by the "Tag release in git" stage, to
+// push a release tag back to this repo.
 //
 // Assumes this job is a multibranch pipeline (the `when { branch 'main' }`
 // guard on the dev-deploy trigger needs BRANCH_NAME to exist) — otherwise
@@ -44,6 +47,14 @@ pipeline {
         // deploy/Jenkinsfile in this same repo (e.g. a second Pipeline job,
         // or "hello-world-app/deploy" if it's a folder/multibranch setup).
         CD_JOB_NAME = 'hello-world-app-cd'
+
+        // Same Jenkins credential used by eks-poc's Terraform pipeline
+        // (Username with password: access key ID / secret access key).
+        // No session token needed -- jenkins-user has long-lived static
+        // credentials, not an STS-assumed role.
+        AWS_CREDS             = credentials('aws-poc-creds')
+        AWS_ACCESS_KEY_ID     = "${env.AWS_CREDS_USR}"
+        AWS_SECRET_ACCESS_KEY = "${env.AWS_CREDS_PSW}"
     }
 
     stages {
@@ -107,6 +118,32 @@ pipeline {
                         | docker login --username AWS --password-stdin ${env.ECR_REPOSITORY_URL.split('/')[0]}
                     docker push ${env.ECR_REPOSITORY_URL}:${env.IMAGE_TAG}
                 """
+            }
+        }
+
+        stage('Tag release in git') {
+            // Only tag builds that actually get deployed — same guard as
+            // the deploy trigger below, so feature-branch/test builds don't
+            // litter the repo with tags. Immutable link between "what's
+            // running" (the ECR image tag) and the exact source it was
+            // built from, independent of package.json possibly changing
+            // later or main moving on — useful for rollback: `git checkout
+            // <tag>` always gets you back to that exact release's source.
+            //
+            // Requires a "github-pat" Jenkins credential (Username with
+            // password: GitHub username / a Personal Access Token with
+            // `repo` scope) with push access to this repo.
+            when {
+                branch 'dev-deploy' // TEMP: matches the trigger guard below
+            }
+            steps {
+                withCredentials([usernamePassword(credentialsId: 'github-pat', usernameVariable: 'GIT_USER', passwordVariable: 'GIT_TOKEN')]) {
+                    sh """
+                        set -euo pipefail
+                        git tag ${env.IMAGE_TAG}
+                        git push "https://\${GIT_USER}:\${GIT_TOKEN}@github.com/mayurcrewale/hello-world-app.git" ${env.IMAGE_TAG}
+                    """
+                }
             }
         }
 
