@@ -113,7 +113,7 @@ for approval.
 - Whatever IAM identity the agent assumes needs `eks:DescribeCluster` on the
   target cluster, and that identity needs to be mapped to sufficient
   Kubernetes RBAC (via `aws-auth` or EKS access entries) to deploy into the
-  `hello-world` namespace.
+  target namespace (derived from the repo name — `hello-world-app` here).
 
 ## Jenkins job setup
 

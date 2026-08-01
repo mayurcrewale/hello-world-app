@@ -18,7 +18,8 @@
 // eks-poc's Terraform pipeline. Needs eks:DescribeCluster for
 // `aws eks update-kubeconfig`; the resulting IAM identity (jenkins-user) is
 // already mapped to cluster-admin via an EKS access entry (see eks-poc's
-// admin_principal_arns) to deploy into the `hello-world` namespace.
+// admin_principal_arns) to deploy into the target namespace (derived from
+// the repo name, see NAMESPACE below).
 //
 // Helm is not used here — see ../Deployment/README.md for why the manifest
 // filenames are numbered, and ../README.md for why helm/hello-world still
@@ -63,7 +64,8 @@ pipeline {
         // eks-poc's environments/tfvars/<env>.tfvars follows the
         // eks-<env> naming convention (eks-dev, eks-prod, ...).
         CLUSTER_NAME = "eks-${params.ENVIRONMENT}"
-        NAMESPACE    = 'hello-world'
+        // NAMESPACE is derived from REPO_NAME in the Checkout stage below
+        // (identical to the git repo name) rather than hardcoded here.
         // Registry host is stable across all repos/apps in this account --
         // the repository name is derived from the SCM remote in the
         // Checkout stage below (matches the CI Jenkinsfile's approach).
@@ -100,6 +102,9 @@ pipeline {
                         returnStdout: true
                     ).trim()
                     env.ECR_REPOSITORY_URL = "${env.ECR_REGISTRY}/${env.REPO_NAME}"
+                    // Namespace matches the repo/app name exactly, rather
+                    // than an independently-chosen value.
+                    env.NAMESPACE = env.REPO_NAME
                 }
             }
         }
@@ -129,7 +134,7 @@ pipeline {
                     export IMAGE="${env.ECR_REPOSITORY_URL}:${params.IMAGE_TAG}"
 
                     for f in Deployment/0*.yaml; do
-                        envsubst '\${IMAGE} \${REPLICAS}' < "\$f" > "${env.RENDERED_DIR}/\$(basename "\$f")"
+                        envsubst '\${IMAGE} \${REPLICAS} \${NAMESPACE}' < "\$f" > "${env.RENDERED_DIR}/\$(basename "\$f")"
                     done
                 """
                 sh "cat ${env.RENDERED_DIR}/*.yaml"
