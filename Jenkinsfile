@@ -69,9 +69,7 @@ pipeline {
         // tag, and an auto-triggered dev deploy. Every other branch
         // (feature/*, PRs, etc) still builds/tests/pushes an image -- just
         // tagged as a snapshot, and without touching git tags or dev.
-        // TEMP: 'dev-deploy' stands in for 'main' while testing this
-        // pipeline on this branch -- switch back to 'main' for real.
-        TRUNK_BRANCH = 'dev-deploy'
+        TRUNK_BRANCH = 'main'
     }
 
     stages {
