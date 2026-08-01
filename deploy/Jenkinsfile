@@ -52,9 +52,11 @@ pipeline {
 
     environment {
         AWS_DEFAULT_REGION = 'ap-south-1'
-        // Matches the cluster_name convention set in eks-poc's
-        // environments/tfvars/<env>.tfvars ("hello-world-dev" / "hello-world-prod").
-        CLUSTER_NAME = "hello-world-${params.ENVIRONMENT}"
+        // Must match cluster_name in eks-poc's environments/tfvars/<env>.tfvars
+        // exactly — there's no shared naming convention across envs there
+        // (dev = "eks-dev", prod = "hello-world-prod"), so it's mapped
+        // explicitly here rather than derived from params.ENVIRONMENT.
+        CLUSTER_NAME = params.ENVIRONMENT == 'dev' ? 'eks-dev' : 'hello-world-prod'
         NAMESPACE    = 'hello-world'
         // TODO: replace with the ecr_repository_url output from eks-poc/bootstrap.
         ECR_REPOSITORY_URL = '664874245394.dkr.ecr.ap-south-1.amazonaws.com/hello-world-app'
@@ -104,7 +106,7 @@ pipeline {
                     export IMAGE="${env.ECR_REPOSITORY_URL}:${params.IMAGE_TAG}"
 
                     for f in Deployment/0*.yaml; do
-                        envsubst '\${IMAGE} \${REPLICAS} \${ALB_SUBNETS}' < "\$f" > "${env.RENDERED_DIR}/\$(basename "\$f")"
+                        envsubst '\${IMAGE} \${REPLICAS}' < "\$f" > "${env.RENDERED_DIR}/\$(basename "\$f")"
                     done
                 """
                 sh "cat ${env.RENDERED_DIR}/*.yaml"

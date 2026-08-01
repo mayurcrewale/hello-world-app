@@ -111,11 +111,11 @@ pipeline {
         }
 
         stage('Trigger dev deploy') {
-            // Only auto-deploy builds of the trunk branch — a feature
-            // branch/PR build still pushes an image (useful on its own,
-            // e.g. for manual testing) but must not land on dev unasked.
+            // TEMP: 'dev-deploy' instead of 'main' while testing the
+            // pipeline on this branch — switch back to 'main' before this
+            // becomes the trunk-triggered auto-deploy for real.
             when {
-                branch 'main'
+                branch 'dev-deploy'
             }
             steps {
                 // wait: false — CI finishes as soon as it hands off, it
