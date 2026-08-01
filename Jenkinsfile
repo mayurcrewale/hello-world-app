@@ -12,12 +12,14 @@
 // branch's image without it colliding with, or ever being mistaken for, a
 // real release.
 //
-// AWS auth: static access key/secret bound via Jenkins Credentials (see the
-// `environment` block below) -- the same "aws-poc-creds" credential used by
-// eks-poc's Terraform pipeline. Needs push permission
-// (ecr:GetAuthorizationToken, ecr:BatchCheckLayerAvailability,
-// ecr:InitiateLayerUpload, ecr:UploadLayerPart, ecr:CompleteLayerUpload,
-// ecr:PutImage) on the ECR repo created by eks-poc/bootstrap.
+// AWS auth: static access key/secret bound via two "Secret text" Jenkins
+// credentials (see the `environment` block below), same ones used by
+// eks-poc's Terraform pipeline -- bound directly rather than reassigned via
+// Groovy string interpolation, to avoid Jenkins' credential-masking
+// warning. Needs push permission (ecr:GetAuthorizationToken,
+// ecr:BatchCheckLayerAvailability, ecr:InitiateLayerUpload,
+// ecr:UploadLayerPart, ecr:CompleteLayerUpload, ecr:PutImage) on the ECR
+// repo created by eks-poc/bootstrap.
 //
 // Git auth: a separate "github-pat" credential (GitHub username / a PAT
 // with `repo` scope) is used only by the "Tag release in git" stage, to
@@ -57,13 +59,11 @@ pipeline {
         // or "hello-world-app/deploy" if it's a folder/multibranch setup).
         CD_JOB_NAME = 'hello-world-app-cd'
 
-        // Same Jenkins credential used by eks-poc's Terraform pipeline
-        // (Username with password: access key ID / secret access key).
-        // No session token needed -- jenkins-user has long-lived static
-        // credentials, not an STS-assumed role.
-        AWS_CREDS             = credentials('aws-poc-creds')
-        AWS_ACCESS_KEY_ID     = "${env.AWS_CREDS_USR}"
-        AWS_SECRET_ACCESS_KEY = "${env.AWS_CREDS_PSW}"
+        // Same two "Secret text" Jenkins credentials used by eks-poc's
+        // Terraform pipeline. No session token needed -- jenkins-user has
+        // long-lived static credentials, not an STS-assumed role.
+        AWS_ACCESS_KEY_ID     = credentials('aws-access-key-id')
+        AWS_SECRET_ACCESS_KEY = credentials('aws-secret-access-key')
 
         // The one branch whose builds get a real release version, a git
         // tag, and an auto-triggered dev deploy. Every other branch

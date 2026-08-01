@@ -13,13 +13,15 @@
 // have network access to the cluster's VPC (bastion/VPN/agent-in-VPC) —
 // exactly the same constraint as the Terraform CD pipeline in eks-poc.
 //
-// AWS auth: static access key/secret bound via Jenkins Credentials (see the
-// `environment` block below) -- the same "aws-poc-creds" credential used by
-// eks-poc's Terraform pipeline. Needs eks:DescribeCluster for
-// `aws eks update-kubeconfig`; the resulting IAM identity (jenkins-user) is
-// already mapped to cluster-admin via an EKS access entry (see eks-poc's
-// admin_principal_arns) to deploy into the target namespace (derived from
-// the repo name, see NAMESPACE below).
+// AWS auth: static access key/secret bound via two "Secret text" Jenkins
+// credentials (see the `environment` block below), same ones used by
+// eks-poc's Terraform pipeline -- bound directly rather than reassigned via
+// Groovy string interpolation, to avoid Jenkins' credential-masking
+// warning. Needs eks:DescribeCluster for `aws eks update-kubeconfig`; the
+// resulting IAM identity (jenkins-user) is already mapped to cluster-admin
+// via an EKS access entry (see eks-poc's admin_principal_arns) to deploy
+// into the target namespace (derived from the repo name, see NAMESPACE
+// below).
 //
 // Helm is not used here — see ../Deployment/README.md for why the manifest
 // filenames are numbered, and ../README.md for why helm/hello-world still
@@ -73,13 +75,12 @@ pipeline {
         ENV_FILE     = "Deployment/env/${params.ENVIRONMENT}.env"
         RENDERED_DIR = 'Deployment/.rendered'
 
-        // Same Jenkins credential used by eks-poc's Terraform pipeline and
-        // this repo's CI Jenkinsfile (Username with password: access key
-        // ID / secret access key). No session token -- jenkins-user has
-        // long-lived static credentials, not an STS-assumed role.
-        AWS_CREDS             = credentials('aws-poc-creds')
-        AWS_ACCESS_KEY_ID     = "${env.AWS_CREDS_USR}"
-        AWS_SECRET_ACCESS_KEY = "${env.AWS_CREDS_PSW}"
+        // Same two "Secret text" Jenkins credentials used by eks-poc's
+        // Terraform pipeline and this repo's CI Jenkinsfile. No session
+        // token -- jenkins-user has long-lived static credentials, not an
+        // STS-assumed role.
+        AWS_ACCESS_KEY_ID     = credentials('aws-access-key-id')
+        AWS_SECRET_ACCESS_KEY = credentials('aws-secret-access-key')
     }
 
     stages {
