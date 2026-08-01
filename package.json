@@ -1,6 +1,6 @@
 {
   "name": "hello-world-app",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "private": true,
   "description": "Hello World Node.js app for the EKS POC",
   "main": "src/index.js",
