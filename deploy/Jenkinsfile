@@ -13,11 +13,12 @@
 // have network access to the cluster's VPC (bastion/VPN/agent-in-VPC) —
 // exactly the same constraint as the Terraform CD pipeline in eks-poc.
 //
-// AWS auth: assumes the agent already has AWS credentials in its ambient
-// environment (EC2 instance profile / ECS task role / IRSA) permitted to
-// call eks:DescribeCluster / sts:AssumeRole for cluster access, and that the
-// resulting IAM identity is mapped to sufficient Kubernetes RBAC (aws-auth
-// or EKS access entries) to deploy into the `hello-world` namespace.
+// AWS auth: static access key/secret bound via Jenkins Credentials (see the
+// `environment` block below) -- the same "aws-poc-creds" credential used by
+// eks-poc's Terraform pipeline. Needs eks:DescribeCluster for
+// `aws eks update-kubeconfig`; the resulting IAM identity (jenkins-user) is
+// already mapped to cluster-admin via an EKS access entry (see eks-poc's
+// admin_principal_arns) to deploy into the `hello-world` namespace.
 //
 // Helm is not used here — see ../Deployment/README.md for why the manifest
 // filenames are numbered, and ../README.md for why helm/hello-world still
@@ -62,6 +63,14 @@ pipeline {
         ECR_REPOSITORY_URL = '664874245394.dkr.ecr.ap-south-1.amazonaws.com/hello-world-app'
         ENV_FILE     = "Deployment/env/${params.ENVIRONMENT}.env"
         RENDERED_DIR = 'Deployment/.rendered'
+
+        // Same Jenkins credential used by eks-poc's Terraform pipeline and
+        // this repo's CI Jenkinsfile (Username with password: access key
+        // ID / secret access key). No session token -- jenkins-user has
+        // long-lived static credentials, not an STS-assumed role.
+        AWS_CREDS             = credentials('aws-poc-creds')
+        AWS_ACCESS_KEY_ID     = "${env.AWS_CREDS_USR}"
+        AWS_SECRET_ACCESS_KEY = "${env.AWS_CREDS_PSW}"
     }
 
     stages {

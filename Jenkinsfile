@@ -4,6 +4,14 @@
 // job directly and pick the environment there; this pipeline never does
 // that itself.
 //
+// Every branch builds, tests, and pushes an image to ECR. Only the trunk
+// branch (TRUNK_BRANCH below) gets: a real release tag (v<package.json
+// version>), a pushed git tag, and an auto-triggered dev deploy. Every
+// other branch (feature/*, PRs, ...) gets a snapshot tag
+// (v<version>-snapshot.<build number>) instead — useful for testing a
+// branch's image without it colliding with, or ever being mistaken for, a
+// real release.
+//
 // AWS auth: static access key/secret bound via Jenkins Credentials (see the
 // `environment` block below) -- the same "aws-poc-creds" credential used by
 // eks-poc's Terraform pipeline. Needs push permission
@@ -15,9 +23,9 @@
 // with `repo` scope) is used only by the "Tag release in git" stage, to
 // push a release tag back to this repo.
 //
-// Assumes this job is a multibranch pipeline (the `when { branch 'main' }`
-// guard on the dev-deploy trigger needs BRANCH_NAME to exist) — otherwise
-// every build of every branch would auto-deploy to dev.
+// Assumes this job is a multibranch pipeline (the trunk-only stages compare
+// against BRANCH_NAME, which needs to exist) — otherwise every build of
+// every branch would be treated as trunk.
 
 pipeline {
     // TEMP for first test run: runs on whatever executor is available.
@@ -55,6 +63,14 @@ pipeline {
         AWS_CREDS             = credentials('aws-poc-creds')
         AWS_ACCESS_KEY_ID     = "${env.AWS_CREDS_USR}"
         AWS_SECRET_ACCESS_KEY = "${env.AWS_CREDS_PSW}"
+
+        // The one branch whose builds get a real release version, a git
+        // tag, and an auto-triggered dev deploy. Every other branch
+        // (feature/*, PRs, etc) still builds/tests/pushes an image -- just
+        // tagged as a snapshot, and without touching git tags or dev.
+        // TEMP: 'dev-deploy' stands in for 'main' while testing this
+        // pipeline on this branch -- switch back to 'main' for real.
+        TRUNK_BRANCH = 'dev-deploy'
     }
 
     stages {
@@ -66,10 +82,20 @@ pipeline {
                     // package.json's version is the single source of truth
                     // for the release version — bump it yourself
                     // (`npm version patch/minor/major`) before a
-                    // release-worthy push. Not derived from git-sha/build
-                    // number anymore.
+                    // release-worthy push.
                     env.APP_VERSION = sh(script: "node -p \"require('./package.json').version\"", returnStdout: true).trim()
-                    env.IMAGE_TAG = "v${env.APP_VERSION}"
+
+                    // Trunk builds get the real, clean release tag. Every
+                    // other branch gets a snapshot tag suffixed with the
+                    // build number (always unique, so it never collides or
+                    // needs the "already released" guard below) -- these
+                    // images are for testing a feature branch's changes,
+                    // never meant to be long-lived or promoted as-is.
+                    if (env.BRANCH_NAME == env.TRUNK_BRANCH) {
+                        env.IMAGE_TAG = "v${env.APP_VERSION}"
+                    } else {
+                        env.IMAGE_TAG = "v${env.APP_VERSION}-snapshot.${env.BUILD_NUMBER}"
+                    }
                 }
             }
         }
@@ -87,6 +113,11 @@ pipeline {
         }
 
         stage('Check version not already released') {
+            // Only meaningful for real release tags — snapshot tags always
+            // include the build number, so they can never collide.
+            when {
+                expression { env.BRANCH_NAME == env.TRUNK_BRANCH }
+            }
             steps {
                 script {
                     def alreadyPushed = sh(
@@ -134,7 +165,7 @@ pipeline {
             // password: GitHub username / a Personal Access Token with
             // `repo` scope) with push access to this repo.
             when {
-                branch 'dev-deploy' // TEMP: matches the trigger guard below
+                expression { env.BRANCH_NAME == env.TRUNK_BRANCH }
             }
             steps {
                 withCredentials([usernamePassword(credentialsId: 'github-pat', usernameVariable: 'GIT_USER', passwordVariable: 'GIT_TOKEN')]) {
@@ -148,11 +179,8 @@ pipeline {
         }
 
         stage('Trigger dev deploy') {
-            // TEMP: 'dev-deploy' instead of 'main' while testing the
-            // pipeline on this branch — switch back to 'main' before this
-            // becomes the trunk-triggered auto-deploy for real.
             when {
-                branch 'dev-deploy'
+                expression { env.BRANCH_NAME == env.TRUNK_BRANCH }
             }
             steps {
                 // wait: false — CI finishes as soon as it hands off, it
