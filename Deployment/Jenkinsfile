@@ -21,8 +21,8 @@
 // admin_principal_arns) to deploy into the target namespace (derived from
 // the repo name, see NAMESPACE below).
 //
-// Helm is not used here — see ../Deployment/README.md for why the manifest
-// filenames are numbered, and ../README.md for why helm/hello-world still
+// Helm is not used here — see README.md (in this directory) for why the
+// manifest filenames are numbered, and ../README.md for why helm/hello-world still
 // exists in this repo unused.
 
 pipeline {
@@ -129,7 +129,7 @@ pipeline {
                     mkdir -p ${env.RENDERED_DIR}
 
                     set -a
-                    source ${env.ENV_FILE}
+                    . ${env.ENV_FILE}
                     set +a
                     export IMAGE="${env.ECR_REPOSITORY_URL}:${params.IMAGE_TAG}"
 

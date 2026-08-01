@@ -30,7 +30,7 @@ hello-world-app/
 ├── Dockerfile
 ├── Jenkinsfile           # CI: npm ci/test → docker build → push to ECR
 ├── Deployment/           # Plain k8s YAML manifests (the active deployment path)
-├── deploy/Jenkinsfile    # CD: envsubst → kubectl diff → manual approval → kubectl apply
+├── Deployment/Jenkinsfile    # CD: envsubst → kubectl diff → manual approval → kubectl apply
 └── helm/hello-world/     # Helm chart — kept, currently UNUSED (see below)
 ```
 
@@ -80,7 +80,7 @@ Full details, including why the filenames are numbered (`00-`, `01-`, ...)
 and how to render manifests locally without Jenkins: see
 [`Deployment/README.md`](Deployment/README.md).
 
-## CD pipeline (`deploy/Jenkinsfile`)
+## CD pipeline (`Deployment/Jenkinsfile`)
 
 Parameterized by `ENVIRONMENT` (`dev`/`prod` dropdown) and `IMAGE_TAG`.
 Stages: verify AWS access → configure kubeconfig for that environment's
@@ -122,7 +122,7 @@ job name:
 
 1. **CI job** — Pipeline (or multibranch pipeline) job, script path
    `Jenkinsfile`.
-2. **CD job** — Pipeline job, script path `deploy/Jenkinsfile`. Give it
+2. **CD job** — Pipeline job, script path `Deployment/Jenkinsfile`. Give it
    whatever name you want, then set `CD_JOB_NAME` in the CI `Jenkinsfile` to
    match exactly (Jenkins job names are case-sensitive; if the CD job lives
    in a folder, use the full path, e.g. `hello-world-app/deploy`).
