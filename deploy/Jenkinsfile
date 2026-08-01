@@ -59,8 +59,10 @@ pipeline {
         // explicitly here rather than derived from params.ENVIRONMENT.
         CLUSTER_NAME = params.ENVIRONMENT == 'dev' ? 'eks-dev' : 'hello-world-prod'
         NAMESPACE    = 'hello-world'
-        // TODO: replace with the ecr_repository_url output from eks-poc/bootstrap.
-        ECR_REPOSITORY_URL = '664874245394.dkr.ecr.ap-south-1.amazonaws.com/hello-world-app'
+        // Registry host is stable across all repos/apps in this account --
+        // the repository name is derived from the SCM remote in the
+        // Checkout stage below (matches the CI Jenkinsfile's approach).
+        ECR_REGISTRY = '664874245394.dkr.ecr.ap-south-1.amazonaws.com'
         ENV_FILE     = "Deployment/env/${params.ENVIRONMENT}.env"
         RENDERED_DIR = 'Deployment/.rendered'
 
@@ -87,6 +89,13 @@ pipeline {
         stage('Checkout') {
             steps {
                 checkout scm
+                script {
+                    env.REPO_NAME = sh(
+                        script: "basename -s .git \$(git config --get remote.origin.url)",
+                        returnStdout: true
+                    ).trim()
+                    env.ECR_REPOSITORY_URL = "${env.ECR_REGISTRY}/${env.REPO_NAME}"
+                }
             }
         }
 

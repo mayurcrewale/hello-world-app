@@ -48,9 +48,10 @@ pipeline {
 
     environment {
         AWS_DEFAULT_REGION = 'ap-south-1'
-        // TODO: replace with the ecr_repository_url output from
-        // eks-poc/bootstrap, e.g. 123456789012.dkr.ecr.eu-west-1.amazonaws.com/hello-world-app
-        ECR_REPOSITORY_URL  = '664874245394.dkr.ecr.ap-south-1.amazonaws.com/hello-world-app'
+        // The registry host is stable across all repos/apps in this
+        // account -- only the repository name (derived from this repo's
+        // own name in the Checkout stage below) varies.
+        ECR_REGISTRY = '664874245394.dkr.ecr.ap-south-1.amazonaws.com'
         // TODO: replace with the actual name of the Jenkins job pointed at
         // deploy/Jenkinsfile in this same repo (e.g. a second Pipeline job,
         // or "hello-world-app/deploy" if it's a folder/multibranch setup).
@@ -79,6 +80,16 @@ pipeline {
                 checkout scm
                 script {
                     env.GIT_SHORT_SHA = sh(script: 'git rev-parse --short HEAD', returnStdout: true).trim()
+
+                    // Derived from the actual SCM remote rather than
+                    // hardcoded, so this Jenkinsfile works unmodified if
+                    // copied into another repo -- the ECR repo name always
+                    // matches the git repo name.
+                    env.REPO_NAME = sh(
+                        script: "basename -s .git \$(git config --get remote.origin.url)",
+                        returnStdout: true
+                    ).trim()
+                    env.ECR_REPOSITORY_URL = "${env.ECR_REGISTRY}/${env.REPO_NAME}"
                     // package.json's version is the single source of truth
                     // for the release version — bump it yourself
                     // (`npm version patch/minor/major`) before a
@@ -123,7 +134,7 @@ pipeline {
                     def alreadyPushed = sh(
                         script: """
                             aws ecr describe-images --region ${env.AWS_DEFAULT_REGION} \
-                                --repository-name ${env.ECR_REPOSITORY_URL.split('/')[1]} \
+                                --repository-name ${env.REPO_NAME} \
                                 --image-ids imageTag=${env.IMAGE_TAG} >/dev/null 2>&1
                         """,
                         returnStatus: true
@@ -146,7 +157,7 @@ pipeline {
                 sh """
                     set -euo pipefail
                     aws ecr get-login-password --region ${env.AWS_DEFAULT_REGION} \
-                        | docker login --username AWS --password-stdin ${env.ECR_REPOSITORY_URL.split('/')[0]}
+                        | docker login --username AWS --password-stdin ${env.ECR_REGISTRY}
                     docker push ${env.ECR_REPOSITORY_URL}:${env.IMAGE_TAG}
                 """
             }
