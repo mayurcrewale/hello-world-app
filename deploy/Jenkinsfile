@@ -13,11 +13,12 @@
 // have network access to the cluster's VPC (bastion/VPN/agent-in-VPC) —
 // exactly the same constraint as the Terraform CD pipeline in eks-poc.
 //
-// AWS auth: assumes the agent already has AWS credentials in its ambient
-// environment (EC2 instance profile / ECS task role / IRSA) permitted to
-// call eks:DescribeCluster / sts:AssumeRole for cluster access, and that the
-// resulting IAM identity is mapped to sufficient Kubernetes RBAC (aws-auth
-// or EKS access entries) to deploy into the `hello-world` namespace.
+// AWS auth: static access key/secret bound via Jenkins Credentials (see the
+// `environment` block below) -- the same "aws-poc-creds" credential used by
+// eks-poc's Terraform pipeline. Needs eks:DescribeCluster for
+// `aws eks update-kubeconfig`; the resulting IAM identity (jenkins-user) is
+// already mapped to cluster-admin via an EKS access entry (see eks-poc's
+// admin_principal_arns) to deploy into the `hello-world` namespace.
 //
 // Helm is not used here — see ../Deployment/README.md for why the manifest
 // filenames are numbered, and ../README.md for why helm/hello-world still
@@ -51,15 +52,27 @@ pipeline {
     }
 
     environment {
-        AWS_DEFAULT_REGION = 'eu-west-1'
-        // Matches the cluster_name convention set in eks-poc's
-        // environments/tfvars/<env>.tfvars ("hello-world-dev" / "hello-world-prod").
-        CLUSTER_NAME = "hello-world-${params.ENVIRONMENT}"
+        AWS_DEFAULT_REGION = 'ap-south-1'
+        // Must match cluster_name in eks-poc's environments/tfvars/<env>.tfvars
+        // exactly — there's no shared naming convention across envs there
+        // (dev = "eks-dev", prod = "hello-world-prod"), so it's mapped
+        // explicitly here rather than derived from params.ENVIRONMENT.
+        CLUSTER_NAME = params.ENVIRONMENT == 'dev' ? 'eks-dev' : 'hello-world-prod'
         NAMESPACE    = 'hello-world'
-        // TODO: replace with the ecr_repository_url output from eks-poc/bootstrap.
-        ECR_REPOSITORY_URL = 'REPLACE-with-ecr_repository_url-output-from-bootstrap'
+        // Registry host is stable across all repos/apps in this account --
+        // the repository name is derived from the SCM remote in the
+        // Checkout stage below (matches the CI Jenkinsfile's approach).
+        ECR_REGISTRY = '664874245394.dkr.ecr.ap-south-1.amazonaws.com'
         ENV_FILE     = "Deployment/env/${params.ENVIRONMENT}.env"
         RENDERED_DIR = 'Deployment/.rendered'
+
+        // Same Jenkins credential used by eks-poc's Terraform pipeline and
+        // this repo's CI Jenkinsfile (Username with password: access key
+        // ID / secret access key). No session token -- jenkins-user has
+        // long-lived static credentials, not an STS-assumed role.
+        AWS_CREDS             = credentials('aws-poc-creds')
+        AWS_ACCESS_KEY_ID     = "${env.AWS_CREDS_USR}"
+        AWS_SECRET_ACCESS_KEY = "${env.AWS_CREDS_PSW}"
     }
 
     stages {
@@ -76,6 +89,13 @@ pipeline {
         stage('Checkout') {
             steps {
                 checkout scm
+                script {
+                    env.REPO_NAME = sh(
+                        script: "basename -s .git \$(git config --get remote.origin.url)",
+                        returnStdout: true
+                    ).trim()
+                    env.ECR_REPOSITORY_URL = "${env.ECR_REGISTRY}/${env.REPO_NAME}"
+                }
             }
         }
 
@@ -104,7 +124,7 @@ pipeline {
                     export IMAGE="${env.ECR_REPOSITORY_URL}:${params.IMAGE_TAG}"
 
                     for f in Deployment/0*.yaml; do
-                        envsubst '\${IMAGE} \${REPLICAS} \${ALB_SUBNETS}' < "\$f" > "${env.RENDERED_DIR}/\$(basename "\$f")"
+                        envsubst '\${IMAGE} \${REPLICAS}' < "\$f" > "${env.RENDERED_DIR}/\$(basename "\$f")"
                     done
                 """
                 sh "cat ${env.RENDERED_DIR}/*.yaml"

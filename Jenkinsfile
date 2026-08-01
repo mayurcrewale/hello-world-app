@@ -4,17 +4,28 @@
 // job directly and pick the environment there; this pipeline never does
 // that itself.
 //
-// AWS auth: assumes the agent already has AWS credentials in its ambient
-// environment (EC2 instance profile / ECS task role / IRSA) with push
-// permission (ecr:GetAuthorizationToken, ecr:BatchCheckLayerAvailability,
-// ecr:InitiateLayerUpload, ecr:UploadLayerPart, ecr:CompleteLayerUpload,
-// ecr:PutImage) on the ECR repo created by eks-poc/bootstrap. If you use the
-// Jenkins Credentials plugin instead, wrap the docker-push stage in
-// `withCredentials(...)` / `withAWS(credentials: '...')`.
+// Every branch builds, tests, and pushes an image to ECR. Only the trunk
+// branch (TRUNK_BRANCH below) gets: a real release tag (v<package.json
+// version>), a pushed git tag, and an auto-triggered dev deploy. Every
+// other branch (feature/*, PRs, ...) gets a snapshot tag
+// (v<version>-snapshot.<build number>) instead — useful for testing a
+// branch's image without it colliding with, or ever being mistaken for, a
+// real release.
 //
-// Assumes this job is a multibranch pipeline (the `when { branch 'main' }`
-// guard on the dev-deploy trigger needs BRANCH_NAME to exist) — otherwise
-// every build of every branch would auto-deploy to dev.
+// AWS auth: static access key/secret bound via Jenkins Credentials (see the
+// `environment` block below) -- the same "aws-poc-creds" credential used by
+// eks-poc's Terraform pipeline. Needs push permission
+// (ecr:GetAuthorizationToken, ecr:BatchCheckLayerAvailability,
+// ecr:InitiateLayerUpload, ecr:UploadLayerPart, ecr:CompleteLayerUpload,
+// ecr:PutImage) on the ECR repo created by eks-poc/bootstrap.
+//
+// Git auth: a separate "github-pat" credential (GitHub username / a PAT
+// with `repo` scope) is used only by the "Tag release in git" stage, to
+// push a release tag back to this repo.
+//
+// Assumes this job is a multibranch pipeline (the trunk-only stages compare
+// against BRANCH_NAME, which needs to exist) — otherwise every build of
+// every branch would be treated as trunk.
 
 pipeline {
     // TEMP for first test run: runs on whatever executor is available.
@@ -36,14 +47,31 @@ pipeline {
     }
 
     environment {
-        AWS_DEFAULT_REGION = 'eu-west-1'
-        // TODO: replace with the ecr_repository_url output from
-        // eks-poc/bootstrap, e.g. 123456789012.dkr.ecr.eu-west-1.amazonaws.com/hello-world-app
-        ECR_REPOSITORY_URL  = 'REPLACE-with-ecr_repository_url-output-from-bootstrap'
+        AWS_DEFAULT_REGION = 'ap-south-1'
+        // The registry host is stable across all repos/apps in this
+        // account -- only the repository name (derived from this repo's
+        // own name in the Checkout stage below) varies.
+        ECR_REGISTRY = '664874245394.dkr.ecr.ap-south-1.amazonaws.com'
         // TODO: replace with the actual name of the Jenkins job pointed at
         // deploy/Jenkinsfile in this same repo (e.g. a second Pipeline job,
         // or "hello-world-app/deploy" if it's a folder/multibranch setup).
         CD_JOB_NAME = 'hello-world-app-cd'
+
+        // Same Jenkins credential used by eks-poc's Terraform pipeline
+        // (Username with password: access key ID / secret access key).
+        // No session token needed -- jenkins-user has long-lived static
+        // credentials, not an STS-assumed role.
+        AWS_CREDS             = credentials('aws-poc-creds')
+        AWS_ACCESS_KEY_ID     = "${env.AWS_CREDS_USR}"
+        AWS_SECRET_ACCESS_KEY = "${env.AWS_CREDS_PSW}"
+
+        // The one branch whose builds get a real release version, a git
+        // tag, and an auto-triggered dev deploy. Every other branch
+        // (feature/*, PRs, etc) still builds/tests/pushes an image -- just
+        // tagged as a snapshot, and without touching git tags or dev.
+        // TEMP: 'dev-deploy' stands in for 'main' while testing this
+        // pipeline on this branch -- switch back to 'main' for real.
+        TRUNK_BRANCH = 'dev-deploy'
     }
 
     stages {
@@ -52,13 +80,33 @@ pipeline {
                 checkout scm
                 script {
                     env.GIT_SHORT_SHA = sh(script: 'git rev-parse --short HEAD', returnStdout: true).trim()
+
+                    // Derived from the actual SCM remote rather than
+                    // hardcoded, so this Jenkinsfile works unmodified if
+                    // copied into another repo -- the ECR repo name always
+                    // matches the git repo name.
+                    env.REPO_NAME = sh(
+                        script: "basename -s .git \$(git config --get remote.origin.url)",
+                        returnStdout: true
+                    ).trim()
+                    env.ECR_REPOSITORY_URL = "${env.ECR_REGISTRY}/${env.REPO_NAME}"
                     // package.json's version is the single source of truth
                     // for the release version — bump it yourself
                     // (`npm version patch/minor/major`) before a
-                    // release-worthy push. Not derived from git-sha/build
-                    // number anymore.
+                    // release-worthy push.
                     env.APP_VERSION = sh(script: "node -p \"require('./package.json').version\"", returnStdout: true).trim()
-                    env.IMAGE_TAG = "v${env.APP_VERSION}"
+
+                    // Trunk builds get the real, clean release tag. Every
+                    // other branch gets a snapshot tag suffixed with the
+                    // build number (always unique, so it never collides or
+                    // needs the "already released" guard below) -- these
+                    // images are for testing a feature branch's changes,
+                    // never meant to be long-lived or promoted as-is.
+                    if (env.BRANCH_NAME == env.TRUNK_BRANCH) {
+                        env.IMAGE_TAG = "v${env.APP_VERSION}"
+                    } else {
+                        env.IMAGE_TAG = "v${env.APP_VERSION}-snapshot.${env.BUILD_NUMBER}"
+                    }
                 }
             }
         }
@@ -76,12 +124,17 @@ pipeline {
         }
 
         stage('Check version not already released') {
+            // Only meaningful for real release tags — snapshot tags always
+            // include the build number, so they can never collide.
+            when {
+                expression { env.BRANCH_NAME == env.TRUNK_BRANCH }
+            }
             steps {
                 script {
                     def alreadyPushed = sh(
                         script: """
                             aws ecr describe-images --region ${env.AWS_DEFAULT_REGION} \
-                                --repository-name ${env.ECR_REPOSITORY_URL.split('/')[1]} \
+                                --repository-name ${env.REPO_NAME} \
                                 --image-ids imageTag=${env.IMAGE_TAG} >/dev/null 2>&1
                         """,
                         returnStatus: true
@@ -104,18 +157,41 @@ pipeline {
                 sh """
                     set -euo pipefail
                     aws ecr get-login-password --region ${env.AWS_DEFAULT_REGION} \
-                        | docker login --username AWS --password-stdin ${env.ECR_REPOSITORY_URL.split('/')[0]}
+                        | docker login --username AWS --password-stdin ${env.ECR_REGISTRY}
                     docker push ${env.ECR_REPOSITORY_URL}:${env.IMAGE_TAG}
                 """
             }
         }
 
-        stage('Trigger dev deploy') {
-            // Only auto-deploy builds of the trunk branch — a feature
-            // branch/PR build still pushes an image (useful on its own,
-            // e.g. for manual testing) but must not land on dev unasked.
+        stage('Tag release in git') {
+            // Only tag builds that actually get deployed — same guard as
+            // the deploy trigger below, so feature-branch/test builds don't
+            // litter the repo with tags. Immutable link between "what's
+            // running" (the ECR image tag) and the exact source it was
+            // built from, independent of package.json possibly changing
+            // later or main moving on — useful for rollback: `git checkout
+            // <tag>` always gets you back to that exact release's source.
+            //
+            // Requires a "github-pat" Jenkins credential (Username with
+            // password: GitHub username / a Personal Access Token with
+            // `repo` scope) with push access to this repo.
             when {
-                branch 'main'
+                expression { env.BRANCH_NAME == env.TRUNK_BRANCH }
+            }
+            steps {
+                withCredentials([usernamePassword(credentialsId: 'github-pat', usernameVariable: 'GIT_USER', passwordVariable: 'GIT_TOKEN')]) {
+                    sh """
+                        set -euo pipefail
+                        git tag ${env.IMAGE_TAG}
+                        git push "https://\${GIT_USER}:\${GIT_TOKEN}@github.com/mayurcrewale/hello-world-app.git" ${env.IMAGE_TAG}
+                    """
+                }
+            }
+        }
+
+        stage('Trigger dev deploy') {
+            when {
+                expression { env.BRANCH_NAME == env.TRUNK_BRANCH }
             }
             steps {
                 // wait: false — CI finishes as soon as it hands off, it
