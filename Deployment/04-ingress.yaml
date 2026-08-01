@@ -10,6 +10,16 @@ metadata:
     alb.ingress.kubernetes.io/target-type: ip
     alb.ingress.kubernetes.io/listen-ports: '[{"HTTP": 80}]'
     alb.ingress.kubernetes.io/healthcheck-path: /health
+    # Shared across every app's Ingress in this POC so they all resolve to
+    # ONE ALB instead of one each -- AWS Load Balancer Controller merges any
+    # Ingress with a matching group.name into a single load balancer. Any
+    # new app cloned from this one (e.g. abc-app) should use this same
+    # value. IMPORTANT: since this app's rule below has no `host` and
+    # claims path "/", a second app sharing this group MUST use a distinct
+    # `host` (or a distinct non-root path) in its own Ingress rule, or the
+    # controller will reject both as conflicting/ambiguous routes on the
+    # same ALB.
+    alb.ingress.kubernetes.io/group.name: hello-world-poc
 spec:
   ingressClassName: alb
   rules:
