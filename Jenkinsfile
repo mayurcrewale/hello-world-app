@@ -36,10 +36,10 @@ pipeline {
     }
 
     environment {
-        AWS_DEFAULT_REGION = 'eu-west-1'
+        AWS_DEFAULT_REGION = 'ap-south-1'
         // TODO: replace with the ecr_repository_url output from
         // eks-poc/bootstrap, e.g. 123456789012.dkr.ecr.eu-west-1.amazonaws.com/hello-world-app
-        ECR_REPOSITORY_URL  = 'REPLACE-with-ecr_repository_url-output-from-bootstrap'
+        ECR_REPOSITORY_URL  = '664874245394.dkr.ecr.ap-south-1.amazonaws.com/hello-world-app'
         // TODO: replace with the actual name of the Jenkins job pointed at
         // deploy/Jenkinsfile in this same repo (e.g. a second Pipeline job,
         // or "hello-world-app/deploy" if it's a folder/multibranch setup).

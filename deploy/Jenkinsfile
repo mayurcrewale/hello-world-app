@@ -51,13 +51,13 @@ pipeline {
     }
 
     environment {
-        AWS_DEFAULT_REGION = 'eu-west-1'
+        AWS_DEFAULT_REGION = 'ap-south-1'
         // Matches the cluster_name convention set in eks-poc's
         // environments/tfvars/<env>.tfvars ("hello-world-dev" / "hello-world-prod").
         CLUSTER_NAME = "hello-world-${params.ENVIRONMENT}"
         NAMESPACE    = 'hello-world'
         // TODO: replace with the ecr_repository_url output from eks-poc/bootstrap.
-        ECR_REPOSITORY_URL = 'REPLACE-with-ecr_repository_url-output-from-bootstrap'
+        ECR_REPOSITORY_URL = '664874245394.dkr.ecr.ap-south-1.amazonaws.com/hello-world-app'
         ENV_FILE     = "Deployment/env/${params.ENVIRONMENT}.env"
         RENDERED_DIR = 'Deployment/.rendered'
     }
