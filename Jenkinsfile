@@ -200,9 +200,6 @@ pipeline {
                 // build go red when the dev deploy fails.
                 build job: env.CD_JOB_NAME, wait: false, parameters: [
                     string(name: 'ENVIRONMENT', value: 'dev'),
-                    // Must match cluster_name in eks-poc's
-                    // environments/tfvars/dev.tfvars exactly.
-                    string(name: 'CLUSTER_NAME', value: 'eks-dev'),
                     string(name: 'IMAGE_TAG', value: env.IMAGE_TAG)
                 ]
             }

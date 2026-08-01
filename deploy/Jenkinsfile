@@ -41,16 +41,12 @@ pipeline {
     parameters {
         // Free-text rather than a fixed dropdown, so a new environment
         // (e.g. "staging") needs no Jenkinsfile change -- just a matching
-        // Deployment/env/<name>.env file and a CLUSTER_NAME to point at.
+        // Deployment/env/<name>.env file, and it'll deploy to cluster
+        // "eks-<name>" (see CLUSTER_NAME below).
         string(
             name: 'ENVIRONMENT',
             defaultValue: 'dev',
             description: 'Environment to deploy to. Must match a Deployment/env/<name>.env file. Only "dev" skips the approval gate -- everything else pauses for one.'
-        )
-        string(
-            name: 'CLUSTER_NAME',
-            defaultValue: '',
-            description: 'EKS cluster name to deploy to -- must match cluster_name in eks-poc\'s environments/tfvars/<env>.tfvars exactly (currently eks-dev / eks-prod).'
         )
         string(
             name: 'IMAGE_TAG',
@@ -61,6 +57,10 @@ pipeline {
 
     environment {
         AWS_DEFAULT_REGION = 'ap-south-1'
+        // Derived rather than a separate param -- every cluster in
+        // eks-poc's environments/tfvars/<env>.tfvars follows the
+        // eks-<env> naming convention (eks-dev, eks-prod, ...).
+        CLUSTER_NAME = "eks-${params.ENVIRONMENT}"
         NAMESPACE    = 'hello-world'
         // Registry host is stable across all repos/apps in this account --
         // the repository name is derived from the SCM remote in the
@@ -84,9 +84,6 @@ pipeline {
                 script {
                     if (!params.IMAGE_TAG?.trim()) {
                         error('IMAGE_TAG is required — use the tag the CI pipeline pushed (see its image-tag.txt artifact).')
-                    }
-                    if (!params.CLUSTER_NAME?.trim()) {
-                        error('CLUSTER_NAME is required — the actual EKS cluster name for this environment (see eks-poc\'s environments/tfvars/<env>.tfvars).')
                     }
                 }
             }
@@ -113,7 +110,7 @@ pipeline {
 
         stage('Configure kubeconfig') {
             steps {
-                sh "aws eks update-kubeconfig --region ${env.AWS_DEFAULT_REGION} --name ${params.CLUSTER_NAME}"
+                sh "aws eks update-kubeconfig --region ${env.AWS_DEFAULT_REGION} --name ${env.CLUSTER_NAME}"
             }
         }
 
