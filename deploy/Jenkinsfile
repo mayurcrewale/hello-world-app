@@ -50,7 +50,7 @@ pipeline {
         string(
             name: 'CLUSTER_NAME',
             defaultValue: '',
-            description: 'EKS cluster name to deploy to -- must match cluster_name in eks-poc\'s environments/tfvars/<env>.tfvars exactly (there\'s no shared naming convention across envs there, e.g. dev = "eks-dev", prod = "hello-world-prod").'
+            description: 'EKS cluster name to deploy to -- must match cluster_name in eks-poc\'s environments/tfvars/<env>.tfvars exactly (currently eks-dev / eks-prod).'
         )
         string(
             name: 'IMAGE_TAG',

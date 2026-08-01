@@ -106,9 +106,9 @@ for approval.
   `ALB_SUBNETS` needs your VPC's **public** subnet IDs, so the ALB
   Controller knows where to place the ALB without needing VPC-wide subnet
   tagging.
-- The pipeline assumes cluster names `hello-world-dev` / `hello-world-prod`
-  — matching `eks-poc/environments/tfvars/*.tfvars`. Update
-  `CLUSTER_NAME` in the Jenkinsfile if you rename them.
+- `CLUSTER_NAME` is a required CD pipeline parameter, not hardcoded — pass
+  the actual cluster name from `eks-poc/environments/tfvars/*.tfvars`
+  (currently `eks-dev` / `eks-prod`) whenever you trigger a deploy.
 - Whatever IAM identity the agent assumes needs `eks:DescribeCluster` on the
   target cluster, and that identity needs to be mapped to sufficient
   Kubernetes RBAC (via `aws-auth` or EKS access entries) to deploy into the
