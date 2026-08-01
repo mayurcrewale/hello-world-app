@@ -39,14 +39,16 @@ pipeline {
     }
 
     parameters {
-        // Free-text rather than a fixed dropdown, so a new environment
-        // (e.g. "staging") needs no Jenkinsfile change -- just a matching
-        // Deployment/env/<name>.env file, and it'll deploy to cluster
-        // "eks-<name>" (see CLUSTER_NAME below).
-        string(
+        // Fixed dropdown rather than free-text -- a typo'd environment name
+        // is a real (if small) risk, and the set of real environments is
+        // small and stable enough that adding one is a deliberate,
+        // one-line Jenkinsfile change, not friction. Adding an environment
+        // means: add it here, add a matching Deployment/env/<name>.env, and
+        // it'll deploy to cluster "eks-<name>" (see CLUSTER_NAME below).
+        choice(
             name: 'ENVIRONMENT',
-            defaultValue: 'dev',
-            description: 'Environment to deploy to. Must match a Deployment/env/<name>.env file. Only "dev" skips the approval gate -- everything else pauses for one.'
+            choices: ['dev', 'prod'],
+            description: 'Environment to deploy to. Only "dev" skips the approval gate -- everything else pauses for one.'
         )
         string(
             name: 'IMAGE_TAG',
