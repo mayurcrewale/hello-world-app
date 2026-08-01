@@ -2,7 +2,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: hello-world
-  namespace: hello-world
+  namespace: ${NAMESPACE}
   labels:
     app.kubernetes.io/name: hello-world
 spec:

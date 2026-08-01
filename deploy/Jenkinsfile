@@ -18,7 +18,8 @@
 // eks-poc's Terraform pipeline. Needs eks:DescribeCluster for
 // `aws eks update-kubeconfig`; the resulting IAM identity (jenkins-user) is
 // already mapped to cluster-admin via an EKS access entry (see eks-poc's
-// admin_principal_arns) to deploy into the `hello-world` namespace.
+// admin_principal_arns) to deploy into the target namespace (derived from
+// the repo name, see NAMESPACE below).
 //
 // Helm is not used here — see ../Deployment/README.md for why the manifest
 // filenames are numbered, and ../README.md for why helm/hello-world still
@@ -39,10 +40,16 @@ pipeline {
     }
 
     parameters {
+        // Fixed dropdown rather than free-text -- a typo'd environment name
+        // is a real (if small) risk, and the set of real environments is
+        // small and stable enough that adding one is a deliberate,
+        // one-line Jenkinsfile change, not friction. Adding an environment
+        // means: add it here, add a matching Deployment/env/<name>.env, and
+        // it'll deploy to cluster "eks-<name>" (see CLUSTER_NAME below).
         choice(
             name: 'ENVIRONMENT',
             choices: ['dev', 'prod'],
-            description: 'Environment to deploy to.'
+            description: 'Environment to deploy to. Only "dev" skips the approval gate -- everything else pauses for one.'
         )
         string(
             name: 'IMAGE_TAG',
@@ -53,12 +60,12 @@ pipeline {
 
     environment {
         AWS_DEFAULT_REGION = 'ap-south-1'
-        // Must match cluster_name in eks-poc's environments/tfvars/<env>.tfvars
-        // exactly — there's no shared naming convention across envs there
-        // (dev = "eks-dev", prod = "hello-world-prod"), so it's mapped
-        // explicitly here rather than derived from params.ENVIRONMENT.
-        CLUSTER_NAME = params.ENVIRONMENT == 'dev' ? 'eks-dev' : 'hello-world-prod'
-        NAMESPACE    = 'hello-world'
+        // Derived rather than a separate param -- every cluster in
+        // eks-poc's environments/tfvars/<env>.tfvars follows the
+        // eks-<env> naming convention (eks-dev, eks-prod, ...).
+        CLUSTER_NAME = "eks-${params.ENVIRONMENT}"
+        // NAMESPACE is derived from REPO_NAME in the Checkout stage below
+        // (identical to the git repo name) rather than hardcoded here.
         // Registry host is stable across all repos/apps in this account --
         // the repository name is derived from the SCM remote in the
         // Checkout stage below (matches the CI Jenkinsfile's approach).
@@ -95,6 +102,9 @@ pipeline {
                         returnStdout: true
                     ).trim()
                     env.ECR_REPOSITORY_URL = "${env.ECR_REGISTRY}/${env.REPO_NAME}"
+                    // Namespace matches the repo/app name exactly, rather
+                    // than an independently-chosen value.
+                    env.NAMESPACE = env.REPO_NAME
                 }
             }
         }
@@ -124,7 +134,7 @@ pipeline {
                     export IMAGE="${env.ECR_REPOSITORY_URL}:${params.IMAGE_TAG}"
 
                     for f in Deployment/0*.yaml; do
-                        envsubst '\${IMAGE} \${REPLICAS}' < "\$f" > "${env.RENDERED_DIR}/\$(basename "\$f")"
+                        envsubst '\${IMAGE} \${REPLICAS} \${NAMESPACE}' < "\$f" > "${env.RENDERED_DIR}/\$(basename "\$f")"
                     done
                 """
                 sh "cat ${env.RENDERED_DIR}/*.yaml"
